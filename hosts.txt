@@ -1,0 +1,2 @@
+lotus.local
+precisix-wireless.local
