@@ -17,7 +17,7 @@ all : netjobs
 netjobs : netjobs.cc
 	$(CXX) $(CPPFLAGS) -o netjobs netjobs.cc $(LIBFLAGS)
 
-test : clean all
+test : all
 	./netjobs
 
 clean :
