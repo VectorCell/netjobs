@@ -1,3 +1,5 @@
 lotus.local
 precisix.local
 green.local
+tank.local
+yogix.local
