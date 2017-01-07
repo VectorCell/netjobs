@@ -15,10 +15,14 @@ class Job:
 		Job.jid += 1
 
 	def __repr__(self):
-		return 'Job {}: {}'.format(self.id, self.cmd)
+		return 'Job {}/{}: {}'.format(self.id, Job.get_num_jobs(), self.cmd)
 
 	def get_cmd(self):
 		return self.cmd
+
+	@staticmethod
+	def get_num_jobs():
+		return Job.jid - 1
 
 
 class Host:
@@ -26,6 +30,7 @@ class Host:
 	def __init__(self, name):
 		self.name = name
 		self.busy = False
+		self.n_jobs = 0
 
 	def __repr__(self):
 		return self.name
@@ -40,7 +45,7 @@ class Host:
 		self.child = subprocess.Popen(['ssh', self.name, job.get_cmd()],
 		                              stdout = subprocess.PIPE,
 		                              stderr = subprocess.PIPE)
-		#print('self.child: {} with pid {}'.format(self.child, self.child.pid))
+		self.n_jobs += 1
 		return self.child.pid
 
 	def cleanup_job(self):
@@ -49,6 +54,9 @@ class Host:
 		self.child = None
 		self.busy = False
 		return output
+
+	def get_n_jobs(self):
+		return self.n_jobs
 
 
 class JobDistributor:
@@ -77,7 +85,6 @@ class JobDistributor:
 			return None
 		ret = self.jobs[self.job_next]
 		self.job_next += 1
-		#print('next job:', ret)
 		return ret
 
 	def __get_available_host(self):
@@ -87,10 +94,12 @@ class JobDistributor:
 		return None
 
 	def __start_job(self, host, job):
-		pid = host.start_job(job)
-		self.pid_job_map[pid] = job
-		self.job_host_map[job] = host
-		#print('started job {} with pid {} on host {}'.format(job.id, pid, host))
+		if host and job:
+			pid = host.start_job(job)
+			self.pid_job_map[pid] = job
+			self.job_host_map[job] = host
+			#print('started job {}/{} with pid {} on host {}'.format(job.id, Job.get_num_jobs(), pid, host))
+			print('started job {}/{} on host {}'.format(job.id, Job.get_num_jobs(), host))
 
 	def __start_next_job(self):
 		if self.__has_next_job():
@@ -101,20 +110,20 @@ class JobDistributor:
 	def __cleanup_job(self, pid):
 		job = self.pid_job_map.pop(pid, None)
 		host = self.job_host_map.pop(job, None)
-		output = host.cleanup_job()
-		print(output.strip())
+		return host.cleanup_job()
 
-	def start(self):
+	def run(self):
 		for host in self.hosts:
 			self.__start_job(host, self.__get_next_job())
 		while True:
 			try:
 				pid, status = os.wait()
-				#print('wait returned pid {}'.format(pid))
 				self.__cleanup_job(pid)
 				self.__start_next_job()
 			except ChildProcessError as cpe:
 				break
+		for host in self.hosts:
+			print('{} ran {} jobs'.format(host, host.get_n_jobs()))
 
 
 def run_jobs_from_lists(hostsfilename, jobsfilename):
@@ -123,7 +132,7 @@ def run_jobs_from_lists(hostsfilename, jobsfilename):
 	with open(jobsfilename) as jobsfile:
 		jobs = [Job(line.strip()) for line in jobsfile if line]
 	jd = JobDistributor(hosts, jobs)
-	jd.start()
+	jd.run()
 
 
 def convert_video_files(directory):
@@ -132,18 +141,26 @@ def convert_video_files(directory):
 	for subdir, dirs, files in os.walk(directory):
 		for file in files:
 			path = os.path.join(subdir, file)
-			print(path)
 			if path[::-1].startswith('.avi'[::-1]):
 				videofiles.append(path)
+
+	with open('hosts.txt') as hostsfile:
+		hosts = [Host(line.strip()) for line in hostsfile if line]
+
 	jobs = []
 	for src in videofiles:
 		dest = src.replace('.avi', '.mkv')
 		lines = []
+		#lines.append('ls -l "{}"'.format(src))
 		lines.append('ffmpeg -i "{}" -c:v libx265 -c:a copy "{}"'.format(src, dest))
-		lines.append('rm "{}"'.format(src))
-		jobs.append(' && '.join(lines))
-	for job in jobs:
-		print(job)
+		#lines.append('rm "{}"'.format(src))
+		jobs.append(Job(' && '.join(lines)))
+	#for host in hosts:
+	#	print('host:', host)
+	#for job in jobs:
+	#	print('job:', job)
+	jd = JobDistributor(hosts, jobs)
+	jd.run()
 
 
 def main(argv):
