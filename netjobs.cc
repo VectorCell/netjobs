@@ -21,7 +21,7 @@ pid_t start_job(host_t& host)
 	if (has_job(host)) {
 		pid_t pid = fork();
 		if (pid == 0) {
-			char buf[128];
+			char buf[1024];
 			sprintf(buf, "ssh %s '%s'", host.name.c_str(), host.job->cmd.c_str());
 			//printf("running job: %s\n", buf);
 			int retval = system(buf);
